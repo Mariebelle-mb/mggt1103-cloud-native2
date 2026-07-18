@@ -1,0 +1,108 @@
+---
+# setup-cluster.yml
+# Phase 1 : Hardening système + installation Docker + K3s
+# Usage : ansible-playbook -i inventory.ini setup-cluster.yml
+
+- name: Hardening de base sur tous les nœuds
+  hosts: k3s_cluster
+  become: true
+  tasks:
+    - name: Mettre à jour le cache apt
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Désactiver l'authentification par mot de passe SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+      notify: restart sshd
+
+    - name: Désactiver la connexion root SSH
+      lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+      notify: restart sshd
+
+    - name: Installer les paquets de base
+      apt:
+        name:
+          - curl
+          - ca-certificates
+          - gnupg
+          - ufw
+        state: present
+
+    - name: Activer le pare-feu (ports SSH + K3s)
+      ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop:
+        - "22"
+        - "6443"   # API server K3s
+        - "80"
+        - "443"
+
+    - name: Activer ufw
+      ufw:
+        state: enabled
+
+  handlers:
+    - name: restart sshd
+      service:
+        name: ssh
+        state: restarted
+
+- name: Installer Docker sur tous les nœuds
+  hosts: k3s_cluster
+  become: true
+  tasks:
+    - name: Installer Docker via le script officiel
+      shell: |
+        curl -fsSL https://get.docker.com | sh
+      args:
+        creates: /usr/bin/docker
+
+    - name: Ajouter vagrant au groupe docker
+      user:
+        name: vagrant
+        groups: docker
+        append: yes
+
+- name: Installer K3s sur le nœud master
+  hosts: master
+  become: true
+  tasks:
+    - name: Installer K3s (control plane)
+      shell: |
+        curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+      args:
+        creates: /usr/local/bin/k3s
+
+    - name: Récupérer le token du cluster
+      slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_token
+
+    - name: Exposer le token pour les workers
+      set_fact:
+        cluster_token: "{{ k3s_token.content | b64decode | trim }}"
+
+- name: Installer K3s sur les workers (rejoindre le cluster)
+  hosts: workers
+  become: true
+  vars:
+    master_ip: "{{ hostvars[groups['master'][0]]['ansible_host'] | default(groups['master'][0]) }}"
+    node_token: "{{ hostvars[groups['master'][0]]['cluster_token'] }}"
+  tasks:
+    - name: Installer K3s en mode agent
+      shell: >
+        curl -sfL https://get.k3s.io |
+        K3S_URL=https://{{ master_ip }}:6443
+        K3S_TOKEN={{ node_token }}
+        sh -
+      args:
+        creates: /usr/local/bin/k3s-agent

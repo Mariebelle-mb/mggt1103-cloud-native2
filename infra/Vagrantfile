@@ -1,0 +1,35 @@
+# -*- mode: ruby -*-
+# Vagrantfile — Cluster K3s simulé (3 VMs sur un seul laptop)
+# Réseau privé host-only 192.168.56.0/24 (remplace le "LAN Wi-Fi" du sujet
+# quand on travaille seul sur une seule machine physique).
+
+VMS = [
+  { name: "master", ip: "192.168.56.10", cpus: 2, mem: 2048 },
+  { name: "worker1", ip: "192.168.56.20", cpus: 2, mem: 1536 },
+  { name: "worker2", ip: "192.168.56.30", cpus: 2, mem: 1536 },
+]
+
+Vagrant.configure("2") do |config|
+  config.vm.box = "ubuntu/jammy64"
+
+  VMS.each do |vm|
+    config.vm.define vm[:name] do |node|
+      node.vm.hostname = vm[:name]
+      node.vm.network "private_network", ip: vm[:ip]
+
+      node.vm.provider "virtualbox" do |vb|
+        vb.name = "k3s-#{vm[:name]}"
+        vb.cpus = vm[:cpus]
+        vb.memory = vm[:mem]
+      end
+
+      # Clé SSH générée localement, injectée pour qu'Ansible puisse
+      # se connecter sans mot de passe (pas d'intervention manuelle après).
+      node.vm.provision "shell", inline: <<-SHELL
+        mkdir -p /home/vagrant/.ssh
+        echo "#{File.read(File.expand_path('~/.ssh/id_rsa.pub')) rescue ''}" >> /home/vagrant/.ssh/authorized_keys
+      SHELL
+    end
+  end
+end
+
