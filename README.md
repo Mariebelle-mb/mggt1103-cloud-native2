@@ -60,3 +60,4 @@ exit
 - **Phase 5** : Stack Prometheus/Loki/Grafana
 
 Dis-moi quand la Phase 1 tourne (les 3 nœuds `Ready`) et on attaque la Phase 2.
+# mggt1103-cloud-native2
