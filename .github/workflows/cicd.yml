@@ -1,0 +1,79 @@
+name: CI/CD - Portail Nginx personnalisé
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'app/nginx-portal/**'
+      - '.github/workflows/cicd.yml'
+
+env:
+  IMAGE_NAME: nginx-portail-telecom
+
+jobs:
+  lint:
+    name: Analyse Dockerfile (Hadolint)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Lint du Dockerfile avec Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: app/nginx-portal/Dockerfile
+
+  build-and-scan:
+    name: Build + Scan de vulnérabilités (Trivy)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Construire l'image Docker
+        run: |
+          docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} app/nginx-portal
+
+      - name: Scanner l'image avec Trivy
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: '${{ env.IMAGE_NAME }}:${{ github.sha }}'
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+      - name: Sauvegarder l'image pour le job suivant
+        run: docker save ${{ env.IMAGE_NAME }}:${{ github.sha }} -o image.tar
+
+      - name: Uploader l'artifact image
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar
+
+  push:
+    name: Publier sur Docker Hub
+    needs: build-and-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Télécharger l'artifact image
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Charger l'image Docker
+        run: docker load -i image.tar
+
+      - name: Connexion à Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Tagger et pousser l'image
+        run: |
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          docker tag ${{ env.IMAGE_NAME }}:${{ github.sha }} ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:latest
+          docker push ${{ secrets.DOCKERHUB_USERNAME }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
