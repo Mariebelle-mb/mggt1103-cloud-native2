@@ -1,0 +1,21 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mggt1103-ingress
+  namespace: mggt1103-projet
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: mggt1103-projet-oauth2-proxy-errors@kubernetescrd,mggt1103-projet-oauth2-proxy-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: portail.projet.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: nginx-portail
+                port:
+                  number: 80
+

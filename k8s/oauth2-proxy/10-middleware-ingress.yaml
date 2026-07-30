@@ -1,0 +1,87 @@
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: oauth2-proxy-auth
+  namespace: mggt1103-projet
+spec:
+  forwardAuth:
+    address: http://oauth2-proxy.mggt1103-projet.svc.cluster.local:4180/oauth2/auth
+    trustForwardHeader: true
+    authResponseHeaders:
+      - X-Auth-Request-User
+      - X-Auth-Request-Email
+      - Set-Cookie
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: oauth2-proxy-errors
+  namespace: mggt1103-projet
+spec:
+  errors:
+    status:
+      - "401-403"
+    service:
+      name: oauth2-proxy
+      port: 4180
+    query: /oauth2/start?rd={url}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kanboard-oauth2-routes
+  namespace: mggt1103-projet
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: kanboard.projet.local
+      http:
+        paths:
+          - path: /oauth2
+            pathType: Prefix
+            backend:
+              service:
+                name: oauth2-proxy
+                port:
+                  number: 4180
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kanboard-ingress-sso
+  namespace: mggt1103-projet
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: mggt1103-projet-oauth2-proxy-errors@kubernetescrd,mggt1103-projet-oauth2-proxy-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: kanboard.projet.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kanboard
+                port:
+                  number: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kanboard-favicon-bypass
+  namespace: mggt1103-projet
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: kanboard.projet.local
+      http:
+        paths:
+          - path: /favicon.ico
+            pathType: Exact
+            backend:
+              service:
+                name: kanboard
+                port:
+                  number: 80

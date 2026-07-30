@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-portail
+  namespace: mggt1103-projet
+  labels:
+    app: nginx-portail
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: nginx-portail
+  template:
+    metadata:
+      labels:
+        app: nginx-portail
+    spec:
+      containers:
+        - name: nginx-portail
+          image: mariebe2000/nginx-portail-telecom:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "32Mi"
+            limits:
+              cpu: "200m"
+              memory: "64Mi"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-portail
+  namespace: mggt1103-projet
+spec:
+  selector:
+    app: nginx-portail
+  ports:
+    - port: 80
+      targetPort: 80
