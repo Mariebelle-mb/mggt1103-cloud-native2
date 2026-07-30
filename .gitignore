@@ -1,0 +1,12 @@
+# Etat interne Vagrant (change a chaque up/destroy, aucun interet pour le jury)
+infra/.vagrant/
+*.vagrant/
+
+# Binaire K3s telecharge localement
+infra/k3s-binary
+k3s-binary
+
+# Fichiers temporaires divers
+*.log
+*.tmp
+
